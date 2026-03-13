@@ -6,7 +6,7 @@ SELECT
 year_added,
 primary_genre,
 COUNT(*) AS titles,
-RANK() OVER(
+DENSE_RANK() OVER(
 PARTITION BY year_added
 ORDER BY COUNT(*) DESC
 ) AS genre_rank

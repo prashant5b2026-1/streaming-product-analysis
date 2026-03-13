@@ -5,7 +5,7 @@ CREATE TABLE netflix_content (
     type TEXT,
     title TEXT,
     director TEXT,
-    cast TEXT,
+    casts TEXT,
     country TEXT,
     date_added DATE,
     release_year INT,

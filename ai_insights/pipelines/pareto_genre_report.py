@@ -25,8 +25,8 @@ def run() -> Dict[str, Any]:
     df = run_query(PARETO_GENRE_SQL)
 
     result = generate_insights(
+        question="What are the most common genres and how concentrated is the catalog?",
         data=df.head(20).to_dict(orient="records"),
-        prompt_key="pareto_genre",
         context={
             "row_count": len(df),
             "sample_genres": ", ".join(str(g) for g in df["primary_genre"].head(5)),

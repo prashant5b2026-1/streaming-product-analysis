@@ -1,8 +1,5 @@
 """Run the full analytics pipeline end to end.
 
-This script is designed to mirror what a professional analytics team does in a
-streaming company, running a repeatable pipeline from raw data through to:
-
 1) Feature engineering
 2) SQL analytics
 3) Exported report artifacts
@@ -33,7 +30,7 @@ from typing import Dict
 import pandas as pd
 from sqlalchemy import create_engine, text
 
-from ai_insights.pipelines.pareto_genre_report import run as run_pareto_report
+from ai_insights.run_questions import run_insights
 from config import config
 from etl.data_quality import data_quality_report, save_report
 from etl.feature_engineering import run_feature_engineering
@@ -107,7 +104,7 @@ def _load_to_postgres(processed_csv: Path) -> None:
 
         # Replace existing table to keep analytics reproducible.
         df.to_sql("netflix_content", engine, if_exists="replace", index=False)
-        logger.info("    → Loaded table: netflix_content")
+        logger.info("    -> Loaded table: netflix_content")
     except Exception as e:
         logger.error(f"Postgres load failed: {e}")
         raise
@@ -139,13 +136,13 @@ def _run_sql_reports() -> Dict[str, Path]:
                 out_path = config.output_dir / f"{name}.csv"
                 df.to_csv(out_path, index=False)
                 results[name] = out_path
-                logger.info(f"      → Saved {out_path}")
+                logger.info(f"      -> Saved {out_path}")
             else:
                 # This is DDL (CREATE, INSERT, etc.), just execute it
                 with engine.connect() as conn:
                     conn.execute(text(sql_text))
                     conn.commit()
-                logger.info(f"      → Executed DDL statement")
+                logger.info(f"      -> Executed DDL statement")
 
         return results
     except Exception as e:
@@ -154,18 +151,25 @@ def _run_sql_reports() -> Dict[str, Path]:
 
 
 def _generate_ai_insights() -> None:
-    """Run an example AI insight pipeline (Pareto genre report)."""
+    """Run the AI insights pipeline for all predefined business questions."""
 
-    logger.info("[5/5] Generating AI insights (requires OPENAI_API_KEY)...")
-
-    if not config.openai_api_key:
-        logger.warning("    -> Skipped (OPENAI_API_KEY not set)")
-        return
+    logger.info("[5/5] Generating AI insights (questions + narrative summaries)...")
 
     try:
-        result = run_pareto_report()
-        logger.info("    → AI insight generated and saved.")
-        logger.info(f"    → Sample: {result.get('insight', '(no insight returned)')[:100]}...")
+        results = run_insights(out_dir=config.output_dir)
+        logger.info("    -> AI insights generated and saved.")
+
+        # Log a sample insight to make it easy to validate quickly
+        sample = next(
+            (
+                data.get("insight")
+                for data in results.values()
+                if data.get("insight")
+            ),
+            None,
+        )
+        if sample:
+            logger.info(f"    -> Sample: {sample[:140]}...")
     except Exception as e:
         logger.error(f"AI insights failed: {e}")
         raise

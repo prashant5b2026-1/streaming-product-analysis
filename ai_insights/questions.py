@@ -7,12 +7,44 @@ question into an answer.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
+import json
+import pandas as pd
 
 from config import config
 from ai_insights.generate_insights import generate_insights
 from ai_insights.query_runner import run_query
+
+
+QUESTION_CATALOG_PATH = Path(__file__).parent / "questions.json"
+
+
+@dataclass(frozen=True)
+class BusinessQuestion:
+    key: str
+    description: str
+    sql_file: str
+    prompt_key: str
+
+
+def _load_question_catalog() -> List[BusinessQuestion]:
+    """Load business questions from the catalog file."""
+
+    if not QUESTION_CATALOG_PATH.exists():
+        raise FileNotFoundError(f"Question catalog not found: {QUESTION_CATALOG_PATH}")
+
+    raw = json.loads(QUESTION_CATALOG_PATH.read_text())
+    return [BusinessQuestion(**q) for q in raw]
+
+
+def _find_question(key: str, questions: List[BusinessQuestion]) -> BusinessQuestion:
+    for q in questions:
+        if q.key == key:
+            return q
+    raise KeyError(f"Unknown business question key: {key}")
 
 
 def _load_sql_file(name: str) -> str:
@@ -25,33 +57,21 @@ def _load_sql_file(name: str) -> str:
     return sql_path.read_text()
 
 
-BUSINESS_QUESTIONS: Dict[str, Dict[str, Any]] = {
-    "library_growth": {
-        "description": "How fast is the content library growing?",
-        "sql_file": "03_growth_analysis",
-        "prompt_key": "growth_over_time",
-    },
-    "dominant_genres": {
-        "description": "Which genres dominate the platform catalog?",
-        "sql_file": "04_genre_market_share",
-        "prompt_key": "dominant_genres",
-    },
-    "emerging_genres": {
-        "description": "Which genres are emerging trends?",
-        "sql_file": "09_genre_growth_recent",
-        "prompt_key": "emerging_genres",
-    },
-    "country_production": {
-        "description": "Which countries produce the most content?",
-        "sql_file": "06_country_share_analysis",
-        "prompt_key": "country_production",
-    },
-    "content_age": {
-        "description": "Is the platform relying too heavily on older content?",
-        "sql_file": "08_content_age_distribution",
-        "prompt_key": "content_age",
-    },
-}
+def _clean_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Make query results JSON-safe by converting NaN/NA values to None."""
+
+    def clean_value(value: Any) -> Any:
+        if pd.isna(value):
+            return None
+        return value
+
+    return [{k: clean_value(v) for k, v in row.items()} for row in rows]
+
+
+def list_question_keys() -> List[str]:
+    """Return available question keys in the catalog."""
+
+    return [q.key for q in _load_question_catalog()]
 
 
 def answer_question(question_key: str) -> Dict[str, Any]:
@@ -61,29 +81,27 @@ def answer_question(question_key: str) -> Dict[str, Any]:
     and the prompt used.
     """
 
-    if question_key not in BUSINESS_QUESTIONS:
-        raise KeyError(f"Unknown business question key: {question_key}")
-
-    question_config = BUSINESS_QUESTIONS[question_key]
-    sql_text = _load_sql_file(question_config["sql_file"])
+    question = _find_question(question_key, _load_question_catalog())
+    sql_text = _load_sql_file(question.sql_file)
 
     df = run_query(sql_text)
-    rows = df.to_dict(orient="records")
+    rows = _clean_rows(df.to_dict(orient="records"))
 
     context = {
-        "question": question_config["description"],
+        "question": question.description,
         "row_count": len(rows),
     }
 
     result = generate_insights(
-        question=question_config["description"],
+        question=question.description,
         data=rows,
         context=context,
+        prompt_key=question.prompt_key,
     )
 
     return {
-        "question_key": question_key,
-        "description": question_config["description"],
+        "question_key": question.key,
+        "description": question.description,
         "data": rows,
         "insight": result["insight"],
         "prompt": result["prompt"],
@@ -95,6 +113,20 @@ def answer_all_questions() -> Dict[str, Dict[str, Any]]:
     """Run all predefined business questions and return the results."""
 
     results: Dict[str, Dict[str, Any]] = {}
-    for key in BUSINESS_QUESTIONS:
-        results[key] = answer_question(key)
+    for q in _load_question_catalog():
+        try:
+            results[q.key] = answer_question(q.key)
+        except Exception as e:
+            # Fail-safe: store the error and continue with remaining questions
+            results[q.key] = {
+                "question_key": q.key,
+                "description": q.description,
+                "error": str(e),
+                "data": [],
+                "insight": None,
+                "prompt": None,
+                "context": {},
+            }
     return results
+
+

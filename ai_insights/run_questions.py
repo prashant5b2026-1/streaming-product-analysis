@@ -13,10 +13,13 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ai_insights.questions import answer_all_questions
+import argparse
+
+from config import config
+from ai_insights.questions import answer_all_questions, answer_question, list_question_keys
 
 
-OUTPUT_DIR = Path(__file__).parent / "outputs"
+OUTPUT_DIR = config.output_dir
 OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
 
 
@@ -40,12 +43,12 @@ def _write_report(results: dict[str, dict], out_dir: Path) -> None:
         lines.append("")
         lines.append("**Insight:**")
         lines.append("")
-        lines.append(data["insight"])
+        lines.append(data.get("insight", "(no insight returned)"))
         lines.append("")
         lines.append("**Sample data (first 5 rows):**")
         lines.append("")
         lines.append("```")
-        for row in data["data"][:5]:
+        for row in data.get("data", [])[:5]:
             lines.append(str(row))
         lines.append("```")
         lines.append("")
@@ -56,19 +59,79 @@ def _write_report(results: dict[str, dict], out_dir: Path) -> None:
     print(f"Saved readable report to: {md_path}\n")
 
 
+def run_insights(
+    questions: list[str] | None = None,
+    out_dir: Path | None = None,
+) -> dict[str, dict]:
+    """Run one or all business questions and write a report.
+
+    This is the programmatic entrypoint used by the pipeline.
+
+    Parameters
+    ----------
+    questions:
+        List of question keys to run. If None, all questions will be executed.
+    """
+
+    out_dir = out_dir or config.output_dir
+    out_dir.mkdir(exist_ok=True, parents=True)
+
+    if questions:
+        results: dict[str, dict] = {}
+        for q in questions:
+            results[q] = answer_question(q)
+    else:
+        results = answer_all_questions()
+
+    _write_report(results, out_dir)
+    return results
+
+
 def main() -> None:
-    results = answer_all_questions()
+    parser = argparse.ArgumentParser(
+        description="Run AI insights for predefined business questions."
+    )
+    parser.add_argument(
+        "--question",
+        nargs="*",
+        type=str,
+        help=(
+            "Specific question key(s) to execute (e.g., content_age). "
+            "If omitted, all questions will be executed."
+        ),
+    )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="List available question keys and exit.",
+    )
+    args = parser.parse_args()
+
+    if args.list:
+        print("Available question keys:")
+        for key in sorted(list_question_keys()):
+            print(f"  - {key}")
+        return
+
+    # Empty list (e.g., --question with no values) should behave like omitted.
+    questions = args.question if args.question else None
+
+    results = run_insights(questions=questions, out_dir=OUTPUT_DIR)
 
     for key, data in results.items():
         print("\n" + "=" * 80)
-        print(f"QUESTION: {data['description']}")
-        print("-> Generated insight:\n")
-        print(data["insight"])
-        print("\n-> Sample data returned (first 5 rows):")
-        for row in data["data"][:5]:
-            print(row)
+        print(f"QUESTION: {data.get('description', key)}")
 
-    _write_report(results, OUTPUT_DIR)
+        if data.get("error"):
+            print("-> Error:")
+            print(data["error"])
+            continue
+
+        print("-> Generated insight:\n")
+        print(data.get("insight"))
+        print("\n-> Sample data returned (first 5 rows):")
+        for row in data.get("data", [])[:5]:
+            print(row)
 
 
 if __name__ == "__main__":

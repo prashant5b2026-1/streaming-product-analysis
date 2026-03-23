@@ -1,6 +1,6 @@
 -- table creation for netflix content data
 
-CREATE TABLE netflix_content (
+CREATE TABLE IF NOT EXISTS netflix_content (
     show_id TEXT,
     type TEXT,
     title TEXT,

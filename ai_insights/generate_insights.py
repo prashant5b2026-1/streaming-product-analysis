@@ -13,6 +13,9 @@ import pandas as pd
 from config import config
 
 
+from ai_insights.prompt_templates import PROMPT_TEMPLATES
+
+
 def _build_prompt(question: str, data: List[Dict[str, Any]], context: Dict[str, Any]) -> str:
     """Build the prompt to send to the LLM.
 
@@ -33,6 +36,26 @@ def _build_prompt(question: str, data: List[Dict[str, Any]], context: Dict[str, 
         f"Additional context: {context}\n\n"
         "Give the insight in 2-3 sentences."
     )
+
+
+def _build_prompt_from_template(
+    prompt_key: str | None,
+    question: str,
+    data: List[Dict[str, Any]],
+    context: Dict[str, Any],
+) -> str:
+    """Build a prompt using a named template, with fallback to the generic builder."""
+
+    if not prompt_key:
+        return _build_prompt(question, data, context)
+
+    template = PROMPT_TEMPLATES.get(prompt_key)
+    if not template:
+        return _build_prompt(question, data, context)
+
+    # Use a compact sample and JSON-like formatting for readability
+    sample = data[:10]
+    return template.format(data=sample, context=context)
 
 
 def _fallback_summary(question: str, data: List[Dict[str, Any]], context: Dict[str, Any]) -> str:
@@ -149,11 +172,12 @@ def generate_insights(
     question: str,
     data: List[Dict[str, Any]],
     context: Optional[Dict[str, Any]] = None,
+    prompt_key: str | None = None,
 ) -> Dict[str, Any]:
     """Generate insights for a given business question and query results."""
 
     context = context or {}
-    prompt = _build_prompt(question, data, context)
+    prompt = _build_prompt_from_template(prompt_key, question, data, context)
     insight_text = _llm_call(prompt, question, data, context)
 
     return {

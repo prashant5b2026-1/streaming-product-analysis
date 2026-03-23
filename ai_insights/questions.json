@@ -1,0 +1,32 @@
+[
+  {
+    "key": "library_growth",
+    "description": "How fast is the content library growing?",
+    "sql_file": "03_growth_analysis",
+    "prompt_key": "growth_over_time"
+  },
+  {
+    "key": "dominant_genres",
+    "description": "Which genres dominate the platform catalog?",
+    "sql_file": "04_genre_market_share",
+    "prompt_key": "dominant_genres"
+  },
+  {
+    "key": "emerging_genres",
+    "description": "Which genres are emerging trends?",
+    "sql_file": "09_genre_growth_recent",
+    "prompt_key": "emerging_genres"
+  },
+  {
+    "key": "country_production",
+    "description": "Which countries produce the most content?",
+    "sql_file": "06_country_share_analysis",
+    "prompt_key": "country_production"
+  },
+  {
+    "key": "content_age",
+    "description": "Is the platform relying too heavily on older content?",
+    "sql_file": "08_content_age_distribution",
+    "prompt_key": "content_age"
+  }
+]
